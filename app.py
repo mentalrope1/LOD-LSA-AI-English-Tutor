@@ -51,13 +51,12 @@ st.markdown(
 # ==========================================
 # 2. API 키 설정 (보안 적용)
 # ==========================================
+# 완전히 안전한 버전
 try:
-    if "GOOGLE_API_KEY" in st.secrets:
-        GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    else:
-        GOOGLE_API_KEY = "AIzaSyDqNjp0aPhjQE-j68j4Mh8-FC6hhqAiD78"
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 except:
-    GOOGLE_API_KEY = "AIzaSyDqNjp0aPhjQE-j68j4Mh8-FC6hhqAiD78"
+    st.error("API 키가 없습니다. Secrets를 설정해주세요.")
+    st.stop()
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
@@ -180,4 +179,5 @@ else:
             with st.spinner("Thinking..."):
                 response = st.session_state.chat_session.send_message(final_input)
                 st.write(response.text)
+
                 speak(response.text)
