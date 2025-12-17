@@ -25,10 +25,10 @@ try:
     with col_title1:
         st.image("logo.png", width=150) # 이미지 크기 조절 가능
     with col_title2:
-        st.title("LSA 영어 회화 - Judy 선생님") # 🦁 이모지 삭제
+        st.title("LSA LOD Speaking - Judy 선생님") # 🦁 이모지 삭제
 except:
     # 파일이 없을 경우 대비
-    st.title("🦁 LSA 영어 회화 - Judy 선생님")
+    st.title("🦁 LSA LOD Speaking - Judy 선생님")
 
 st.markdown(
     """
@@ -181,3 +181,4 @@ else:
                 st.write(response.text)
 
                 speak(response.text)
+
