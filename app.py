@@ -107,7 +107,7 @@ if "chat_session" not in st.session_state:
         [학습 자료] {lesson_content}
         [규칙] 1. 자료 내용만 사용. 2. 초등학생 대상: 쉽고 짧게. 3. 이모지 필수(읽을 땐 무시).
         """
-        model = genai.GenerativeModel(model_name="models/gemini-flash-latest", system_instruction=system_instruction)
+        model = genai.GenerativeModel(model_name="models/gemini-2.0-flash-exp", system_instruction=system_instruction)
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.lesson_content = lesson_content
     else:
@@ -181,4 +181,5 @@ else:
                 st.write(response.text)
 
                 speak(response.text)
+
 
