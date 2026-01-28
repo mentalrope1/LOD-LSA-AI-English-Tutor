@@ -73,8 +73,8 @@ def load_lesson():
 def speak(text):
     try:
         clean_text = re.sub(r'[^a-zA-Z0-9가-힣\s.,!?\'"]', '', text)
-        # 영국식(co.uk)으로 변경
-        tts = gTTS(text=clean_text, lang='en', tld='co.uk', slow=False) 
+        # 다시 미국으로 변경
+        tts = gTTS(text=clean_text, lang='en', slow=False)
         audio_bytes = BytesIO()
         tts.write_to_fp(audio_bytes)
         audio_data = audio_bytes.getvalue()
@@ -181,6 +181,7 @@ else:
                 st.write(response.text)
 
                 speak(response.text)
+
 
 
 
