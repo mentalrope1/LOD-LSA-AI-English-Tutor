@@ -4,7 +4,8 @@ from io import BytesIO
 import base64
 import re
 import os
-from streamlit_mic_recorder import speech_to_text
+# ★ 변경: speech_to_text 대신 raw 녹음용 mic_recorder를 가져옵니다.
+from streamlit_mic_recorder import mic_recorder
 
 # ==========================================
 # 1. 화면 설정 & 스타일
@@ -62,12 +63,11 @@ def load_lesson():
 
 def speak(text):
     try:
-        # 이모지나 특수 기호는 음성 합성 전에 제거하여 발음이 꼬이지 않게 함
         clean_text = re.sub(r'[^a-zA-Z0-9가-힣\s.,!?\'"]', '', text)
         
         response = client.audio.speech.create(
             model="tts-1",
-            voice="nova", # 부드럽고 친절한 원어민 여성 목소리
+            voice="nova", 
             input=clean_text
         )
         audio_data = response.content
@@ -91,7 +91,6 @@ if "messages" not in st.session_state:
     lesson_content = load_lesson()
     
     if lesson_content != "ERROR":
-        # ★ Judy 선생님에게 완벽한 유연성과 스캐폴딩(힌트) 능력 부여
         system_instruction = f"""
         당신은 초등학생을 대상으로 하는 LSA 영어 학원의 대화형 AI 튜터 'Judy'입니다.
         정답만 체크하는 딱딱한 로봇처럼 굴지 말고, 아이들이 편안하고 재미있게 대화할 수 있도록 극도로 유연하고 따뜻하게 반응하세요.
@@ -101,7 +100,7 @@ if "messages" not in st.session_state:
         - [학습 자료]: {lesson_content}
 
         [★ 핵심 지침: 유연한 소통 및 유도법]
-        1. 한국어 사용에 대한 포용력: 학생이 한국어로 말하거나 질문하면 절대 밀어내지 마세요. 
+        1. 한국어 사용에 대한 포용력: 학생이 음성이나 타자로 한국어로 말하거나 질문하면 절대 밀어내지 마세요. 
            반드시 한국어로 친절하게 맞장구를 치거나 설명해 준 뒤, "이번에는 선생님이 한국어로 설명해 주지만, 다음에는 영어로 같이 말해보기 약속! 😉" 과 같은 부드러운 멘트를 남기세요. 그리고 항상 마지막은 아이가 대답하기 아주 쉬운 영어 질문이나 문장으로 끝마쳐야 합니다.
         
         2. 단계별 힌트 제공 (스캐폴딩): 학생이 대답을 어려워하거나, 문법이 틀리거나, 침묵할 때는 다짜고짜 정답을 주지 마세요. 
@@ -166,14 +165,30 @@ else:
     
     c1, c2 = st.columns([6, 2])
     with c2:
-        # 💡 [안내] 마이크 음성 인식은 'en'(영어)으로 설정되어 있어 영어 발음 연습용으로 작동합니다.
-        # 아이가 한국말로 타이핑(채팅 입력)을 하거나 영어를 어려워할 때 GPT Judy가 유연하게 대처하게 됩니다.
-        voice_text = speech_to_text(language='en', start_prompt="🎙️ 영어로 말하기", stop_prompt="⏹️ 완료하기", just_once=True, key='mic')
+        # ★ [수정] OpenAI Whisper AI 음성 인식을 지원하는 마이크 버튼으로 교체
+        audio_data = mic_recorder(start_prompt="🎙️ 누르고 말하기", stop_prompt="⏹️ 완료 (전송)", just_once=True, key='mic')
+
+    # 오디오 데이터가 들어오면 OpenAI Whisper로 텍스트 변환 진행
+    voice_text = ""
+    if audio_data:
+        with st.spinner("Judy 선생님이 음성을 듣고 있어요... 🎧"):
+            try:
+                audio_bytes = BytesIO(audio_data['bytes'])
+                audio_bytes.name = "audio.mp3"  # Whisper 인식용 가상 파일명 설정
+                
+                # OpenAI Whisper API 호출 (언어 자동 감지)
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_bytes
+                )
+                voice_text = transcription.text
+            except Exception as e:
+                st.error(f"음성 인식 오류가 발생했습니다: {e}")
 
     if voice_text:
         st.info(f"🗣️ You said: **{voice_text}**")
 
-    text_input = st.chat_input("Judy 선생님과 대화해보세요! (한국어 입력도 가능해요)")
+    text_input = st.chat_input("Judy 선생님과 대화해보세요! (한국어/영어 모두 가능)")
     final_input = voice_text if voice_text else text_input
 
     if final_input:
