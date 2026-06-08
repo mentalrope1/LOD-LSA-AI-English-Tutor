@@ -1,6 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
-from gtts import gTTS
+from openai import OpenAI
 from io import BytesIO
 import base64
 import re
@@ -10,24 +9,18 @@ from streamlit_mic_recorder import speech_to_text
 # ==========================================
 # 1. 화면 설정 & 스타일
 # ==========================================
-# ★ [수정 1] 브라우저 탭 아이콘을 이미지 파일로 변경
-# (반드시 'logo.png' 파일이 같은 폴더에 있어야 합니다)
 try:
     st.set_page_config(page_title="LSA AI Tutor", page_icon="logo.png")
 except:
-    # 혹시 파일이 없으면 그냥 이모지로 표시 (에러 방지)
     st.set_page_config(page_title="LSA AI Tutor", page_icon="🦁")
 
-# ★ [수정 2] 메인 타이틀 옆에 로고 이미지 배치
-# 기존 st.title("🦁...") 코드를 아래 4줄로 교체
 try:
     col_title1, col_title2 = st.columns([2, 7])
     with col_title1:
-        st.image("logo.png", width=150) # 이미지 크기 조절 가능
+        st.image("logo.png", width=150)
     with col_title2:
-        st.title("LSA LOD Speaking - Judy 선생님") # 🦁 이모지 삭제
+        st.title("LSA LOD Speaking - Judy 선생님")
 except:
-    # 파일이 없을 경우 대비
     st.title("🦁 LSA LOD Speaking - Judy 선생님")
 
 st.markdown(
@@ -36,8 +29,6 @@ st.markdown(
     .stChatMessage p { font-size: 22px !important; line-height: 1.5 !important; }
     .stChatInput textarea { font-size: 18px !important; }
     div.stButton button { font-size: 18px !important; }
-    
-    /* 입장 버튼 스타일 꾸미기 */
     .big-button {
         display: flex;
         justify-content: center;
@@ -49,19 +40,19 @@ st.markdown(
 )
 
 # ==========================================
-# 2. API 키 설정 (보안 적용)
+# 2. OpenAI API 키 설정
 # ==========================================
-# 완전히 안전한 버전
 try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 except:
-    st.error("API 키가 없습니다. Secrets를 설정해주세요.")
+    st.error("OpenAI API 키가 없습니다. Streamlit Secrets에 OPENAI_API_KEY를 설정해주세요.")
     st.stop()
 
-genai.configure(api_key=GOOGLE_API_KEY)
+# OpenAI 클라이언트 초기화
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ==========================================
-# 3. 함수들
+# 3. 함수들 (OpenAI TTS 원어민 음성 적용)
 # ==========================================
 def load_lesson():
     try:
@@ -72,12 +63,18 @@ def load_lesson():
 
 def speak(text):
     try:
+        # 이모지나 특수문자 제거
         clean_text = re.sub(r'[^a-zA-Z0-9가-힣\s.,!?\'"]', '', text)
-        # 다시 미국으로 변경
-        tts = gTTS(text=clean_text, lang='en', slow=False)
-        audio_bytes = BytesIO()
-        tts.write_to_fp(audio_bytes)
-        audio_data = audio_bytes.getvalue()
+        
+        # ★ OpenAI의 최고급 TTS 엔진으로 부드러운 원어민 목소리 생성
+        # 추천 목소리: nova(부드러운 여성), shimmer(밝은 여성)
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice="nova", 
+            input=clean_text
+        )
+        
+        audio_data = response.content
         
         # 브라우저 강제 재생 (autoplay)
         b64 = base64.b64encode(audio_data).decode()
@@ -91,15 +88,14 @@ def speak(text):
         st.error(f"오디오 오류: {e}")
 
 # ==========================================
-# 4. 상태 관리 (수업 시작 여부 체크)
+# 4. 상태 관리 & 대화 초기화 (OpenAI GPT-4o-mini 적용)
 # ==========================================
 if "class_started" not in st.session_state:
     st.session_state.class_started = False
 
-if "chat_session" not in st.session_state:
+if "messages" not in st.session_state:
     lesson_content = load_lesson()
     
-    # 모델 설정
     if lesson_content != "ERROR":
         system_instruction = f"""
         당신은 LSA 영어 학원의 튜터 'Judy'입니다.
@@ -107,14 +103,14 @@ if "chat_session" not in st.session_state:
         [학습 자료] {lesson_content}
         [규칙] 1. 자료 내용만 사용. 2. 초등학생 대상: 쉽고 짧게. 3. 이모지 필수(읽을 땐 무시).
         """
-        model = genai.GenerativeModel(model_name="models/gemini-2.5-flash", system_instruction=system_instruction)
-        st.session_state.chat_session = model.start_chat(history=[])
+        # OpenAI용 대화 기록 리스트 초기화 (System Prompt 주입)
+        st.session_state.messages = [{"role": "system", "content": system_instruction}]
         st.session_state.lesson_content = lesson_content
     else:
         st.session_state.lesson_content = "ERROR"
 
 # ==========================================
-# 5. 메인 화면 로직 (입장 버튼 vs 채팅창)
+# 5. 메인 화면 로직
 # ==========================================
 
 # [상황 A] 아직 수업 시작 버튼을 안 눌렀을 때
@@ -123,45 +119,50 @@ if not st.session_state.class_started:
     st.subheader("👋 Welcome to League of Dreamtree AI Class!")
     st.write("Click the button below to meet Judy.")
     
-    # 가운데 정렬을 위한 컬럼 트릭
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # 이 버튼을 누르는 순간 '클릭'으로 인정되어 오디오 권한이 풀림!
         if st.button("🚀 수업 시작하기 (Enter Class)", use_container_width=True):
             st.session_state.class_started = True
             
-            # 버튼 누르자마자 첫 인사 생성 & 재생
             if st.session_state.lesson_content != "ERROR":
                 with st.spinner("Judy 선생님이 오고 계십니다..."):
-                    first_msg = st.session_state.chat_session.send_message("수업 시작해. 주제와 관련된 첫 인사를 건네줘.")
-                    # 여기서 생성된 첫 인사를 저장해둠
-                    st.session_state.first_greeting = first_msg.text
+                    # 첫 인사 요청 메시지 추가
+                    st.session_state.messages.append({"role": "user", "content": "수업 시작해. 주제와 관련된 첫 인사를 건네줘."})
+                    
+                    # GPT-4o-mini 모델로 첫 인사 생성
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=st.session_state.messages
+                    )
+                    first_greeting_text = response.choices[0].message.content
+                    
+                    # 답변 기록 저장 및 첫 인사 세션 저장
+                    st.session_state.messages.append({"role": "assistant", "content": first_greeting_text})
+                    st.session_state.first_greeting = first_greeting_text
             st.rerun()
 
 # [상황 B] 수업 시작 버튼을 누른 후 (채팅 화면)
 else:
     # 1. 채팅 기록 표시
-    for i, message in enumerate(st.session_state.chat_session.history):
-        if message.role == "user" and "수업 시작해" in message.parts[0].text:
+    for message in st.session_state.messages:
+        # 시스템 프롬프트나 최초 트리거 대화는 화면에서 숨김
+        if message["role"] == "system":
+            continue
+        if message["role"] == "user" and "수업 시작해" in message["content"]:
             continue
         
-        role = "👩‍🏫 Judy" if message.role == "model" else "🧑‍💻 나"
-        with st.chat_message(message.role):
-            st.write(message.parts[0].text)
+        role = "👩‍🏫 Judy" if message["role"] == "assistant" else "🧑‍💻 나"
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
 
-    # ★ 첫 입장 시 인사말 자동 재생 ★
-    # (방금 버튼을 클릭하고 들어왔으므로 브라우저가 소리를 허용해줌)
+    # ★ 첫 입장 시 원어민 인사말 자동 재생 ★
     if "first_greeting" in st.session_state:
-        # 화면에 보이지 않는 오디오 플레이어를 심어서 소리만 나게 함
         speak(st.session_state.first_greeting)
-        # 한 번 재생했으니 삭제 (새로고침 시 중복 재생 방지)
         del st.session_state.first_greeting
 
     # 2. 입력창 (마이크 + 텍스트)
     st.write("---")
     
-    # 마이크 버튼 배치
-    # [수정] 글자가 길어지니까 버튼 공간을 1 -> 2로 늘려줍니다.
     c1, c2 = st.columns([6, 2])
     with c2:
         voice_text = speech_to_text(language='en', start_prompt="🎙️ 음성으로 답하기", stop_prompt="⏹️ 완료하기", just_once=True, key='mic')
@@ -173,17 +174,21 @@ else:
     final_input = voice_text if voice_text else text_input
 
     if final_input:
+        # 사용자 입력 표시 및 저장
         with st.chat_message("user"):
             st.write(final_input)
+        st.session_state.messages.append({"role": "user", "content": final_input})
+        
+        # Judy 선생님 답변 생성 및 재생
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = st.session_state.chat_session.send_message(final_input)
-                st.write(response.text)
-
-                speak(response.text)
-
-
-
-
-
-
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=st.session_state.messages
+                )
+                response_text = response.choices[0].message.content
+                st.write(response_text)
+                
+                # 답변 기록 저장 및 음성 출력
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                speak(response_text)
