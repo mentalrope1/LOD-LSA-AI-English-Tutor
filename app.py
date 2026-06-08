@@ -4,7 +4,6 @@ from io import BytesIO
 import base64
 import re
 import os
-# ★ 변경: speech_to_text 대신 raw 녹음용 mic_recorder를 가져옵니다.
 from streamlit_mic_recorder import mic_recorder
 
 # ==========================================
@@ -82,7 +81,7 @@ def speak(text):
         st.error(f"오디오 오류: {e}")
 
 # ==========================================
-# 4. 상태 관리 및 유연한 교육용 페르소나 설정
+# 4. 상태 관리 및 영어 몰입형 페르소나 설정
 # ==========================================
 if "class_started" not in st.session_state:
     st.session_state.class_started = False
@@ -91,24 +90,24 @@ if "messages" not in st.session_state:
     lesson_content = load_lesson()
     
     if lesson_content != "ERROR":
+        # ★ Judy 선생님의 영어 사용 비중을 극대화하고 한국어는 최소화하도록 튜닝
         system_instruction = f"""
-        당신은 초등학생을 대상으로 하는 LSA 영어 학원의 대화형 AI 튜터 'Judy'입니다.
-        정답만 체크하는 딱딱한 로봇처럼 굴지 말고, 아이들이 편안하고 재미있게 대화할 수 있도록 극도로 유연하고 따뜻하게 반응하세요.
+        You are 'Judy', a friendly AI English tutor for elementary school students at LSA Academy.
+        Lead the conversation based on the [Lesson Content] below.
+        - [Lesson Content]: {lesson_content}
 
-        [기본 미션 및 학습 자료]
-        - 아래 [학습 자료]의 내용을 기반으로 대화를 리드하되, 상황에 맞게 유동적으로 대화하세요.
-        - [학습 자료]: {lesson_content}
-
-        [★ 핵심 지침: 유연한 소통 및 유도법]
-        1. 한국어 사용에 대한 포용력: 학생이 음성이나 타자로 한국어로 말하거나 질문하면 절대 밀어내지 마세요. 
-           반드시 한국어로 친절하게 맞장구를 치거나 설명해 준 뒤, "이번에는 선생님이 한국어로 설명해 주지만, 다음에는 영어로 같이 말해보기 약속! 😉" 과 같은 부드러운 멘트를 남기세요. 그리고 항상 마지막은 아이가 대답하기 아주 쉬운 영어 질문이나 문장으로 끝마쳐야 합니다.
+        [★ Crucial Rules for Language Usage]
+        1. Default is 100% English: You must speak ONLY in English by default. 
+           - Praise the student in English (e.g., "Great job! 🎉", "Perfect! You are right! 👍").
+           - Do NOT translate the student's correct answers or your English responses into Korean. Keep the momentum in English.
         
-        2. 단계별 힌트 제공 (스캐폴딩): 학생이 대답을 어려워하거나, 문법이 틀리거나, 침묵할 때는 다짜고짜 정답을 주지 마세요. 
-           "괜찮아, 할 수 있어! 👍 이 단어는 'A'로 시작해~" 혹은 단어의 뜻을 한국어로 슬쩍 알려주는 등 쉬운 힌트를 주어 스스로 영어로 말할 수 있도록 유도하세요.
+        2. Strict Condition for Korean (As a Backup Only):
+           - Rule A (Student uses Korean): If the student explicitly types or says something in Korean (e.g., "모르겠어요", "힌트 주세요"), reply warmly in Korean for just ONE sentence, then immediately guide them back to English. (e.g., "괜찮아, 선생님이 도와줄게! Let's try together. What is...?")
+           - Rule B (Student is struggling in English): If the student tries to answer in English but is wrong or stuck, give a hint in simple English first. Only mix a tiny bit of Korean (like a single word translation) if absolutely necessary to help them understand. Do NOT explain long sentences in Korean.
         
-        3. 눈높이 맞춤: 상대는 초등학생입니다. 한 번에 길고 복잡한 문장을 쓰지 마세요. 명확하고 짧은 문장(최대 2~3문장)으로 끊어서 대화하세요.
+        3. Simple & Short: Use short, clear, and easy sentences suitable for elementary schoolers (Maximum 2 sentences per response).
         
-        4. 친근한 어조: 성인 대화가 아니므로 이모지(✨, 💖, 👍, 😮 등)를 풍부하게 사용하여 칭찬과 격려를 아끼지 마세요.
+        4. Emojis: Use friendly emojis (✨, 💖, 👍, 😊) to encourage the student.
         """
         st.session_state.messages = [{"role": "system", "content": system_instruction}]
         st.session_state.lesson_content = lesson_content
@@ -131,7 +130,7 @@ if not st.session_state.class_started:
             
             if st.session_state.lesson_content != "ERROR":
                 with st.spinner("Judy 선생님이 오고 계십니다..."):
-                    st.session_state.messages.append({"role": "user", "content": "수업 시작해. 아이에게 반갑게 인사하며 첫 마디를 건네줘."})
+                    st.session_state.messages.append({"role": "user", "content": "수업 시작해. 아이에게 영어로 반갑게 첫 마디를 건네줘."})
                     
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
@@ -165,18 +164,15 @@ else:
     
     c1, c2 = st.columns([6, 2])
     with c2:
-        # ★ [수정] OpenAI Whisper AI 음성 인식을 지원하는 마이크 버튼으로 교체
         audio_data = mic_recorder(start_prompt="🎙️ 누르고 말하기", stop_prompt="⏹️ 완료 (전송)", just_once=True, key='mic')
 
-    # 오디오 데이터가 들어오면 OpenAI Whisper로 텍스트 변환 진행
     voice_text = ""
     if audio_data:
         with st.spinner("Judy 선생님이 음성을 듣고 있어요... 🎧"):
             try:
                 audio_bytes = BytesIO(audio_data['bytes'])
-                audio_bytes.name = "audio.mp3"  # Whisper 인식용 가상 파일명 설정
+                audio_bytes.name = "audio.mp3"
                 
-                # OpenAI Whisper API 호출 (언어 자동 감지)
                 transcription = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_bytes
@@ -188,7 +184,7 @@ else:
     if voice_text:
         st.info(f"🗣️ You said: **{voice_text}**")
 
-    text_input = st.chat_input("Judy 선생님과 대화해보세요! (한국어/영어 모두 가능)")
+    text_input = st.chat_input("Judy 선생님과 대화해보세요!")
     final_input = voice_text if voice_text else text_input
 
     if final_input:
