@@ -48,11 +48,10 @@ except:
     st.error("OpenAI API 키가 없습니다. Streamlit Secrets에 OPENAI_API_KEY를 설정해주세요.")
     st.stop()
 
-# OpenAI 클라이언트 초기화
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ==========================================
-# 3. 함수들 (OpenAI TTS 원어민 음성 적용)
+# 3. 음성 재생 함수 (OpenAI TTS)
 # ==========================================
 def load_lesson():
     try:
@@ -63,20 +62,15 @@ def load_lesson():
 
 def speak(text):
     try:
-        # 이모지나 특수문자 제거
+        # 이모지나 특수 기호는 음성 합성 전에 제거하여 발음이 꼬이지 않게 함
         clean_text = re.sub(r'[^a-zA-Z0-9가-힣\s.,!?\'"]', '', text)
         
-        # ★ OpenAI의 최고급 TTS 엔진으로 부드러운 원어민 목소리 생성
-        # 추천 목소리: nova(부드러운 여성), shimmer(밝은 여성)
         response = client.audio.speech.create(
             model="tts-1",
-            voice="nova", 
+            voice="nova", # 부드럽고 친절한 원어민 여성 목소리
             input=clean_text
         )
-        
         audio_data = response.content
-        
-        # 브라우저 강제 재생 (autoplay)
         b64 = base64.b64encode(audio_data).decode()
         md = f"""
             <audio controls autoplay="true">
@@ -88,7 +82,7 @@ def speak(text):
         st.error(f"오디오 오류: {e}")
 
 # ==========================================
-# 4. 상태 관리 & 대화 초기화 (OpenAI GPT-4o-mini 적용)
+# 4. 상태 관리 및 유연한 교육용 페르소나 설정
 # ==========================================
 if "class_started" not in st.session_state:
     st.session_state.class_started = False
@@ -97,13 +91,26 @@ if "messages" not in st.session_state:
     lesson_content = load_lesson()
     
     if lesson_content != "ERROR":
+        # ★ Judy 선생님에게 완벽한 유연성과 스캐폴딩(힌트) 능력 부여
         system_instruction = f"""
-        당신은 LSA 영어 학원의 튜터 'Judy'입니다.
-        아래 [학습 자료]의 내용으로만 수업하세요.
-        [학습 자료] {lesson_content}
-        [규칙] 1. 자료 내용만 사용. 2. 초등학생 대상: 쉽고 짧게. 3. 이모지 필수(읽을 땐 무시).
+        당신은 초등학생을 대상으로 하는 LSA 영어 학원의 대화형 AI 튜터 'Judy'입니다.
+        정답만 체크하는 딱딱한 로봇처럼 굴지 말고, 아이들이 편안하고 재미있게 대화할 수 있도록 극도로 유연하고 따뜻하게 반응하세요.
+
+        [기본 미션 및 학습 자료]
+        - 아래 [학습 자료]의 내용을 기반으로 대화를 리드하되, 상황에 맞게 유동적으로 대화하세요.
+        - [학습 자료]: {lesson_content}
+
+        [★ 핵심 지침: 유연한 소통 및 유도법]
+        1. 한국어 사용에 대한 포용력: 학생이 한국어로 말하거나 질문하면 절대 밀어내지 마세요. 
+           반드시 한국어로 친절하게 맞장구를 치거나 설명해 준 뒤, "이번에는 선생님이 한국어로 설명해 주지만, 다음에는 영어로 같이 말해보기 약속! 😉" 과 같은 부드러운 멘트를 남기세요. 그리고 항상 마지막은 아이가 대답하기 아주 쉬운 영어 질문이나 문장으로 끝마쳐야 합니다.
+        
+        2. 단계별 힌트 제공 (스캐폴딩): 학생이 대답을 어려워하거나, 문법이 틀리거나, 침묵할 때는 다짜고짜 정답을 주지 마세요. 
+           "괜찮아, 할 수 있어! 👍 이 단어는 'A'로 시작해~" 혹은 단어의 뜻을 한국어로 슬쩍 알려주는 등 쉬운 힌트를 주어 스스로 영어로 말할 수 있도록 유도하세요.
+        
+        3. 눈높이 맞춤: 상대는 초등학생입니다. 한 번에 길고 복잡한 문장을 쓰지 마세요. 명확하고 짧은 문장(최대 2~3문장)으로 끊어서 대화하세요.
+        
+        4. 친근한 어조: 성인 대화가 아니므로 이모지(✨, 💖, 👍, 😮 등)를 풍부하게 사용하여 칭찬과 격려를 아끼지 마세요.
         """
-        # OpenAI용 대화 기록 리스트 초기화 (System Prompt 주입)
         st.session_state.messages = [{"role": "system", "content": system_instruction}]
         st.session_state.lesson_content = lesson_content
     else:
@@ -113,7 +120,6 @@ if "messages" not in st.session_state:
 # 5. 메인 화면 로직
 # ==========================================
 
-# [상황 A] 아직 수업 시작 버튼을 안 눌렀을 때
 if not st.session_state.class_started:
     st.write("---")
     st.subheader("👋 Welcome to League of Dreamtree AI Class!")
@@ -126,26 +132,21 @@ if not st.session_state.class_started:
             
             if st.session_state.lesson_content != "ERROR":
                 with st.spinner("Judy 선생님이 오고 계십니다..."):
-                    # 첫 인사 요청 메시지 추가
-                    st.session_state.messages.append({"role": "user", "content": "수업 시작해. 주제와 관련된 첫 인사를 건네줘."})
+                    st.session_state.messages.append({"role": "user", "content": "수업 시작해. 아이에게 반갑게 인사하며 첫 마디를 건네줘."})
                     
-                    # GPT-4o-mini 모델로 첫 인사 생성
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=st.session_state.messages
                     )
                     first_greeting_text = response.choices[0].message.content
                     
-                    # 답변 기록 저장 및 첫 인사 세션 저장
                     st.session_state.messages.append({"role": "assistant", "content": first_greeting_text})
                     st.session_state.first_greeting = first_greeting_text
             st.rerun()
 
-# [상황 B] 수업 시작 버튼을 누른 후 (채팅 화면)
 else:
     # 1. 채팅 기록 표시
     for message in st.session_state.messages:
-        # 시스템 프롬프트나 최초 트리거 대화는 화면에서 숨김
         if message["role"] == "system":
             continue
         if message["role"] == "user" and "수업 시작해" in message["content"]:
@@ -155,7 +156,7 @@ else:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
-    # ★ 첫 입장 시 원어민 인사말 자동 재생 ★
+    # 첫 입장 시 인사말 자동 재생
     if "first_greeting" in st.session_state:
         speak(st.session_state.first_greeting)
         del st.session_state.first_greeting
@@ -165,21 +166,21 @@ else:
     
     c1, c2 = st.columns([6, 2])
     with c2:
-        voice_text = speech_to_text(language='en', start_prompt="🎙️ 음성으로 답하기", stop_prompt="⏹️ 완료하기", just_once=True, key='mic')
+        # 💡 [안내] 마이크 음성 인식은 'en'(영어)으로 설정되어 있어 영어 발음 연습용으로 작동합니다.
+        # 아이가 한국말로 타이핑(채팅 입력)을 하거나 영어를 어려워할 때 GPT Judy가 유연하게 대처하게 됩니다.
+        voice_text = speech_to_text(language='en', start_prompt="🎙️ 영어로 말하기", stop_prompt="⏹️ 완료하기", just_once=True, key='mic')
 
     if voice_text:
         st.info(f"🗣️ You said: **{voice_text}**")
 
-    text_input = st.chat_input("Type your message here...")
+    text_input = st.chat_input("Judy 선생님과 대화해보세요! (한국어 입력도 가능해요)")
     final_input = voice_text if voice_text else text_input
 
     if final_input:
-        # 사용자 입력 표시 및 저장
         with st.chat_message("user"):
             st.write(final_input)
         st.session_state.messages.append({"role": "user", "content": final_input})
         
-        # Judy 선생님 답변 생성 및 재생
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 response = client.chat.completions.create(
@@ -189,6 +190,5 @@ else:
                 response_text = response.choices[0].message.content
                 st.write(response_text)
                 
-                # 답변 기록 저장 및 음성 출력
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 speak(response_text)
